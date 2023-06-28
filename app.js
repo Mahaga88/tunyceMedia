@@ -2,8 +2,8 @@ const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
 const User = require("./models/user");
+const path = require("path");
 const bcrypt = require("bcrypt");
-const user = require("./models/user");
 const session = require("express-session");
 
 mongoose
@@ -20,10 +20,12 @@ mongoose
   });
 
 app.set("view engine", "ejs");
-app.set("views", "views");
+app.set("views", path.join(__dirname, "views"));
 
 app.use(express.urlencoded({ extended: true }));
-app.use(session({ secret: "notagoodsecret" }));
+app.use(
+  session({ secret: "notagoodsecret", resave: false, saveUninitialized: false })
+);
 
 const requireLogin = (req, res, next) => {
   if (!req.session.user_id) {
@@ -37,7 +39,8 @@ app.get("/signup", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("Welcome to the Home Page");
+  const links = `<a href="/login">Login</a> | <a href="/signup">Sign Up</a>`;
+  res.send(`Welcome to the Home Page<br>${links}`);
 });
 
 app.post("/signup", async (req, res) => {
@@ -52,15 +55,27 @@ app.get("/login", (req, res) => {
   res.render("login");
 });
 
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  const foundUser = await User.findAndValidate(username, password);
-  if (foundUser) {
-    req.session.user_id = foundUser._id;
-    res.redirect("/secret");
-  } else {
-    res.send("/login");
+app.post("/login", async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    const foundUser = await User.findAndValidate(username, password);
+    if (foundUser) {
+      req.session.user_id = foundUser._id;
+      res.redirect("/secret");
+    } else {
+      res.render("login", {
+        errorMessage: "Invalid username or password",
+        showLoginButton: true,
+      });
+    }
+  } catch (error) {
+    next(error);
   }
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal Server Error" });
 });
 
 app.post("/logout", (req, res) => {
@@ -75,6 +90,11 @@ app.get("/secret", requireLogin, (req, res) => {
 
 app.get("/topsecret", requireLogin, (req, res) => {
   res.send("You found mySecret!");
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal Server Error" });
 });
 
 app.listen(3000, () => {
